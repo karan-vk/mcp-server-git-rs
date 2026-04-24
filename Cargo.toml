@@ -5,9 +5,8 @@ edition = "2021"
 rust-version = "1.75"
 description = "Fast Rust MCP server exposing git repository operations over stdio"
 license = "MIT"
-repository = "https://github.com/anthropics/mcp-server-git-rs"
 readme = "README.md"
-keywords = ["mcp", "git", "server", "anthropic"]
+keywords = ["mcp", "git", "server"]
 categories = ["command-line-utilities", "development-tools"]
 
 [[bin]]

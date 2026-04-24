@@ -141,8 +141,9 @@ rust:     11.4 ms ±  1.4 ms    (50 runs, warm)
 rust ran 59.84 × ± 8.76 × faster than python
 ```
 
-The win is almost entirely interpreter startup and MCP SDK init cost — per-tool
-wall-clock stays in the sub-millisecond range for small repos.
+Inside a single long-running session (the shape an agent loop actually
+produces), warm `git_status` over stdio averages **~1.7 ms/call** on an empty
+test repo — throughput around 580 calls/second.
 
 ## Relationship to `mcp-server-git`
 
