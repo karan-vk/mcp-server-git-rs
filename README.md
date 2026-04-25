@@ -92,7 +92,7 @@ and ships with a `.sha256` sibling for verification.
 
 ```bash
 # Pick the triple that matches your machine
-TAG=v0.1.0
+TAG=v0.2.0
 TRIPLE=aarch64-apple-darwin   # or x86_64-apple-darwin, x86_64-unknown-linux-gnu,
                               #    aarch64-unknown-linux-gnu, x86_64-unknown-linux-musl,
                               #    aarch64-unknown-linux-musl
