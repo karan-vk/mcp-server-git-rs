@@ -8,6 +8,9 @@ license = "MIT"
 readme = "README.md"
 keywords = ["mcp", "git", "server"]
 categories = ["command-line-utilities", "development-tools"]
+authors = ["Karan Vijayakumar <karanvknarayanan@gmail.com>"]
+repository = "https://github.com/karan-vk/mcp-server-git-rs"
+homepage = "https://github.com/karan-vk/mcp-server-git-rs"
 
 [[bin]]
 name = "mcp-server-git-rs"
