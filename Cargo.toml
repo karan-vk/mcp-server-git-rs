@@ -2,7 +2,7 @@
 name = "mcp-server-git-rs"
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.75"
+rust-version = "1.85"
 description = "Fast Rust MCP server exposing git repository operations over stdio"
 license = "MIT"
 readme = "README.md"

@@ -4,7 +4,7 @@
 [![CI](https://github.com/karan-vk/mcp-server-git-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/karan-vk/mcp-server-git-rs/actions/workflows/ci.yml)
 [![Release](https://github.com/karan-vk/mcp-server-git-rs/actions/workflows/release.yml/badge.svg)](https://github.com/karan-vk/mcp-server-git-rs/actions/workflows/release.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![MSRV](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](Cargo.toml)
+[![MSRV](https://img.shields.io/badge/rust-1.85%2B-orange.svg)](Cargo.toml)
 
 A fast Rust MCP server that exposes git repository operations over stdio. Drop-in
 replacement for the Python [`mcp-server-git`](https://github.com/modelcontextprotocol/servers/tree/main/src/git)
