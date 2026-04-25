@@ -6,6 +6,16 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.1] – 2026-04-25
+
+### Fixed
+- `git_push` and `git_tag_push` now fall back to `git credential fill`
+  when libgit2's built-in credential-helper path returns nothing. Picks
+  up macOS osxkeychain, Windows credential manager, and custom helpers
+  like `!gh auth git-credential` that libgit2's own implementation
+  doesn't understand. Auth order is now: ssh-agent → libgit2 credential
+  helper → `git credential fill` → `$MCP_GIT_TOKEN`.
+
 ## [0.2.0] – 2026-04-25
 
 ### Added
@@ -58,6 +68,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   on all user-provided refs and paths.
 - ISO-8601 and relative-span timestamp parsing in `git_log` via `jiff`.
 
-[Unreleased]: https://github.com/karan-vk/mcp-server-git-rs/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/karan-vk/mcp-server-git-rs/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/karan-vk/mcp-server-git-rs/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/karan-vk/mcp-server-git-rs/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/karan-vk/mcp-server-git-rs/releases/tag/v0.1.0
