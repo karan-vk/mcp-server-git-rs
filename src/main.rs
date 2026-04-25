@@ -6,6 +6,7 @@ use rmcp::{serve_server, transport::stdio};
 use tracing::{info, warn};
 use tracing_subscriber::{fmt, EnvFilter};
 
+use mcp_server_git_rs::features::FeatureSet;
 use mcp_server_git_rs::server::GitServer;
 
 #[derive(Parser)]
@@ -15,9 +16,17 @@ use mcp_server_git_rs::server::GitServer;
     version
 )]
 struct Cli {
-    /// Restrict all operations to this repository (and its subdirectories).
-    #[arg(short = 'r', long = "repository")]
-    repository: Option<PathBuf>,
+    /// Restrict operations to one or more repositories (and their
+    /// subdirectories and worktrees). Pass `-r` multiple times to allow
+    /// several repos. Without this flag, the server is unscoped.
+    #[arg(short = 'r', long = "repository", action = clap::ArgAction::Append)]
+    repository: Vec<PathBuf>,
+
+    /// Enable additional tool groups (comma-separated). Without this flag, only
+    /// the core tools are exposed. Valid groups: inspection, tags, stash,
+    /// remotes, history, branches-extended, worktrees, notes, all.
+    #[arg(long = "features", value_delimiter = ',')]
+    features: Vec<String>,
 
     /// Increase log verbosity. Repeat for more (-v info, -vv debug).
     #[arg(short = 'v', long = "verbose", action = clap::ArgAction::Count)]
@@ -39,7 +48,9 @@ async fn main() -> Result<()> {
         .with_writer(std::io::stderr)
         .init();
 
-    if let Some(ref path) = cli.repository {
+    let features = FeatureSet::from_cli(&cli.features).context("invalid --features value")?;
+
+    for path in &cli.repository {
         match git2::Repository::open(path) {
             Ok(_) => info!("using repository at {}", path.display()),
             Err(e) => {
@@ -52,7 +63,7 @@ async fn main() -> Result<()> {
         }
     }
 
-    let handler = GitServer::new(cli.repository);
+    let handler = GitServer::new(cli.repository, features);
 
     let running = serve_server(handler, stdio())
         .await

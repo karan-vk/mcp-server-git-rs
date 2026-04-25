@@ -85,7 +85,7 @@ pub fn git_push(repo: &Repository, args: PushArgs<'_>) -> Result<String> {
     Ok(format!("Pushed {branch} → {}{upstream_note}", args.remote))
 }
 
-fn auth_callback(
+pub fn auth_callback(
     url: &str,
     username: Option<&str>,
     allowed: CredentialType,

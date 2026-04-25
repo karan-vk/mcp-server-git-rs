@@ -9,22 +9,34 @@ A fast Rust MCP server that exposes git repository operations over stdio. Drop-i
 replacement for the Python [`mcp-server-git`](https://github.com/modelcontextprotocol/servers/tree/main/src/git)
 reference server: same tool names, same input schemas, same stdio transport.
 
-Single static binary, ~10 ms cold start, ~60× faster than the Python server on a
-Claude-Desktop-shaped `initialize` + `tools/list` handshake.
+Single static binary. On an Apple M3, ~5 ms cold start vs ~375 ms for the
+Python server, and warm `tools/call` round-trips of 1–7 ms across the
+read-only tools we measure. Numbers, methodology, and a reproducible harness
+are in [`bench/`](./bench).
 
 ## Highlights
 
-- **13 tools** — the full Python reference set plus `git_push` with ssh-agent /
-  credential-helper auth.
-- **~60× faster cold start** than `uvx mcp-server-git` on the handshake path.
-- **Single static binary** (~4.7 MB stripped). No Python runtime, no `uvx`, no
-  per-call environment resolution.
+- **52 tools total** — the full Python reference set plus `git_push`, plus 39
+  more across 8 opt-in groups (inspection, tags, stash, remotes, history,
+  branches-extended, worktrees, notes). Default invocation still exposes only
+  the **core 13** so smaller agents don't see a 50-tool list.
+- **Staged via `--features`** — one CLI flag, comma-separated values, `all`
+  shorthand. Single binary, gated at runtime.
+- **Reproducible benchmarks** — `bench/run.py` measures cold start + warm-call
+  p50/p95 against `uvx mcp-server-git` on whatever fixture you point it at.
+  The "60×" claim is now a number you can verify, not a marketing line.
 - **Security-hardened** — canonicalised repo scoping (`--repository`),
   flag-injection rejection, `revparse` validation. Matches the Python server's
-  invariants one-to-one.
+  invariants one-to-one and applies them to every new tool.
 - **Works with 12+ MCP-speaking agents** — see [Use with your agent](#use-with-your-agent).
 
 ## Tools
+
+### Core (always on)
+
+The default invocation exposes these 13 tools — the full Python reference set
+plus `git_push`. They match the Python server's names, schemas, and error
+shapes one-to-one.
 
 | Tool | Description | Annotations |
 |---|---|---|
@@ -40,10 +52,35 @@ Claude-Desktop-shaped `initialize` + `tools/list` handshake.
 | `git_checkout` | Switch branches | — |
 | `git_show` | Show a commit | read-only |
 | `git_branch` | List branches (local/remote/all, with `contains`/`not_contains`) | read-only |
-| `git_push` *(new)* | Push to a remote. SSH agent for `git@`, credential helper for `https://` | destructive |
+| `git_push` *(new in v0.1.0)* | Push to a remote. SSH agent for `git@`, credential helper for `https://` | destructive |
 
-`git_push` is the only tool the Python reference server does not expose.
-Everything else is a one-to-one port.
+### Optional groups (`--features <LIST>`)
+
+Pass `--features` with a comma-separated list to enable additional groups, or
+`--features all` to enable everything. Without the flag, the core 13 above are
+the only tools exposed.
+
+| Group | Flag | Tools |
+|---|---|---|
+| Inspection | `inspection` | `git_blame`, `git_blame_line`, `git_ls_tree`, `git_cat_file`, `git_show_ref` |
+| Tags | `tags` | `git_tag_list`, `git_tag_create`, `git_tag_delete`, `git_tag_push`, `git_describe` |
+| Stash | `stash` | `git_stash_list`, `git_stash_save`, `git_stash_pop`, `git_stash_apply`, `git_stash_drop`, `git_stash_show` |
+| Remotes / network | `remotes` | `git_remote_list`, `git_remote_add`, `git_remote_remove`, `git_remote_set_url`, `git_fetch`, `git_remote_prune`, `git_ls_remote` |
+| History (mostly destructive) | `history` | `git_revert`, `git_cherry_pick`, `git_reset_hard`, `git_clean`, `git_rev_parse` |
+| Branches (extended) | `branches-extended` | `git_branch_rename`, `git_branch_delete`, `git_set_upstream`, `git_merge_base` |
+| Worktrees | `worktrees` | `git_worktree_list`, `git_worktree_add`, `git_worktree_remove` |
+| Notes / grep | `notes` | `git_notes_list`, `git_notes_add`, `git_notes_remove`, `git_grep` |
+
+Examples:
+
+```bash
+mcp-server-git-rs                                 # core 13 tools only
+mcp-server-git-rs --features inspection,stash    # core + 11 tools
+mcp-server-git-rs --features all                 # all 52 tools
+```
+
+A disabled group's tools are hidden from `tools/list`; calling one anyway
+returns an `invalid_request` error naming the missing feature.
 
 ## Install
 
@@ -102,12 +139,35 @@ cargo build --release
 ```
 mcp-server-git-rs [OPTIONS]
 
-  -r, --repository <PATH>   restrict operations to this repo (all tool calls
-                            must resolve inside it after canonicalisation)
+  -r, --repository <PATH>   restrict operations to this repo. Repeatable —
+                            pass `-r` multiple times to allow several repos.
+                            Worktrees of allowed repos are auto-allowed
+                            even at sibling paths.
+      --features <LIST>     enable additional tool groups (comma-separated;
+                            inspection, tags, stash, remotes, history,
+                            branches-extended, worktrees, notes, all)
   -v, --verbose             repeatable: -v info, -vv debug (default: warn)
 ```
 
 Logs go to stderr; stdout is the MCP channel.
+
+### Multiple repos, branches, and worktrees
+
+The server is stateless per call — every tool takes its own `repo_path`,
+and branch / revision are also per-call arguments. One server instance can
+freely operate on any number of repos and branches in the same session:
+
+| Invocation | What's allowed |
+|---|---|
+| `mcp-server-git-rs` | unscoped — any `repo_path`, any branch, any worktree |
+| `mcp-server-git-rs -r /a` | repo A only, plus any branch in A and any worktree of A |
+| `mcp-server-git-rs -r /a -r /b -r /c` | A, B, C (and their worktrees), per call |
+
+Worktrees of an allowed repo are accepted automatically even when their
+working directory lives outside the allowed root (which is the normal
+layout, since `git worktree add` typically creates a sibling directory).
+The check resolves the candidate's `commondir` and accepts it if that
+maps under any allowed root.
 
 ## Use with your agent
 
@@ -425,18 +485,54 @@ for the rest we can add an approxidate shim.
 
 ## Benchmark
 
-Measured against the Python reference server on `initialize` + `tools/list`:
+Numbers, methodology, and the harness live in [`bench/`](./bench). What we
+measure:
 
+1. **Cold start** — `Popen` → response to `initialize`. The latency a host
+   like Claude Desktop pays on every fresh launch.
+2. **Warm-call latency** — `tools/call` round-trip over a long-running stdio
+   session that already finished `initialize`. The cost an agent loop pays
+   per tool invocation.
+
+We compare against `uvx mcp-server-git` on the read-only tools that overlap
+between the two servers. The harness runs locally:
+
+```bash
+cargo build --release
+cd bench && python3 run.py --out results/$(date +%Y-%m-%d).md
 ```
-python:  679.3 ms ± 55.3 ms    (50 runs, warm)
-rust:     11.4 ms ±  1.4 ms    (50 runs, warm)
 
-rust ran 59.84 × ± 8.76 × faster than python
-```
+### Results — 2026-04-25
 
-Inside a single long-running session (the shape an agent loop actually
-produces), warm `git_status` over stdio averages **~1.7 ms/call** on an empty
-test repo — throughput around 580 calls/second.
+Run on an Apple M3 (Darwin 25.3.0 arm64), `rustc 1.94.0`, Python 3.13.12,
+`uvx 0.9.6`. Fixture is this repo at the commit listed in
+[`bench/results/2026-04-25.md`](./bench/results/2026-04-25.md).
+
+**Cold start** (server spawn → `initialize` response, 20 runs):
+
+| Server | p50 (ms) | p95 (ms) | mean (ms) |
+|---|---:|---:|---:|
+| `mcp-server-git-rs` | 4.78 | 5.20 | 5.46 |
+| `mcp-server-git` (python via uvx) | 374.44 | 381.33 | 383.95 |
+
+**Warm-call latency** (one stdio session, 100 iterations after 10 warmup):
+
+| Tool | rust p50 | rust p95 | python p50 | python p95 | speedup p50 |
+|---|---:|---:|---:|---:|---:|
+| `git_status` | 2.45 | 2.89 | 27.52 | 29.81 | 11.2× |
+| `git_log` | 1.18 | 1.39 | 75.97 | 82.84 | 64.6× |
+| `git_branch` | 1.17 | 1.28 | 26.47 | 29.20 | 22.6× |
+| `git_diff_unstaged` | 6.73 | 7.21 | 33.90 | 34.69 | 5.0× |
+| `git_diff_staged` | 1.40 | 1.55 | 25.97 | 27.08 | 18.6× |
+| `git_show` | 3.24 | 3.58 | 75.97 | 79.68 | 23.5× |
+
+Caveats: this is one machine, one (small) fixture repo. The harness passes
+`branch_type: "local"` to `git_branch` so both servers do equivalent work —
+the Python server's schema requires it while Rust defaults to local; without
+the explicit argument Python returns a fast schema-validation error and the
+comparison is meaningless. Re-run the harness on your own setup before
+quoting these numbers; please file an issue with results from other
+hardware.
 
 ## Relationship to `mcp-server-git`
 

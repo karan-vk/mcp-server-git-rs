@@ -1,5 +1,14 @@
+pub mod branches_ext;
+pub mod features;
 pub mod guard;
+pub mod history;
+pub mod inspection;
 pub mod log;
+pub mod notes;
 pub mod push;
+pub mod remotes;
 pub mod server;
+pub mod stash;
+pub mod tags;
 pub mod tools;
+pub mod worktrees;

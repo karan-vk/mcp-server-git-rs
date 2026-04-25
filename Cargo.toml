@@ -1,6 +1,6 @@
 [package]
 name = "mcp-server-git-rs"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Fast Rust MCP server exposing git repository operations over stdio"
 license = "MIT"
@@ -27,6 +27,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 anyhow = "1"
 jiff = "0.2"
+regex = "1"
 
 [dev-dependencies]
 tempfile = "3"
