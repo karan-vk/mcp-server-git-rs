@@ -29,6 +29,10 @@ are in [`bench/`](./bench).
   flag-injection rejection, `revparse` validation. Matches the Python server's
   invariants one-to-one and applies them to every new tool.
 - **Works with 12+ MCP-speaking agents** — see [Use with your agent](#use-with-your-agent).
+- **Pairs with a Claude Code skill** — drop in [`skills.md`](./skills.md) so the
+  model knows when to prefer MCP tools over `git` via Bash, plus the auth chain,
+  feature gating, and `repo_path` / timestamp constraints. See
+  [Pair with the skill](#pair-with-the-skill).
 
 ## Tools
 
@@ -434,6 +438,35 @@ inside Pieces to register `mcp-server-git-rs`. Install the Pieces MCP server
 alongside `mcp-server-git-rs` in any of the hosts above.
 
 Docs: <https://docs.pieces.app/products/mcp/get-started>
+
+## Pair with the skill
+
+`mcp-server-git-rs` ships a companion [Claude Code skill](./skills.md) that
+teaches the model the rules of the road: which MCP tools to prefer over `git`
+via Bash, which tool groups are gated behind `--features`, the auth chain for
+`git_push`, and the constraints the server enforces (absolute `repo_path`,
+ISO-8601-only timestamps in `git_log`, flag-injection rejection). Without it
+agents waste turns shelling out to `git` for operations the MCP already covers,
+or get tripped up by the gated-tool error message.
+
+Install for Claude Code (skill-aware agents pick up the same file):
+
+```bash
+# User-scoped (visible in every project)
+mkdir -p ~/.claude/skills/git-rs
+curl -sSL https://raw.githubusercontent.com/karan-vk/mcp-server-git-rs/main/skills.md \
+  -o ~/.claude/skills/git-rs/SKILL.md
+
+# Or project-scoped (commits with the repo)
+mkdir -p .claude/skills/git-rs
+cp skills.md .claude/skills/git-rs/SKILL.md
+```
+
+The frontmatter at the top of `skills.md` is what triggers the skill — the
+description names the `mcp__git-rs__*` tool prefix so the harness only loads it
+when the MCP server is actually connected. For agents that don't support skills
+natively, paste the body into your system prompt or a `CLAUDE.md` file at the
+repo root.
 
 ## `git_push` and authentication
 
