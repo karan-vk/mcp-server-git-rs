@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use clap::Parser;
-use rmcp::{serve_server, transport::stdio};
+use rmcp::{serve_server, service::ServerInitializeError, transport::stdio};
 use tracing::{info, warn};
 use tracing_subscriber::{fmt, EnvFilter};
 
@@ -65,9 +65,16 @@ async fn main() -> Result<()> {
 
     let handler = GitServer::new(cli.repository, features);
 
-    let running = serve_server(handler, stdio())
-        .await
-        .context("failed to start MCP server")?;
+    let running = match serve_server(handler, stdio()).await {
+        Ok(running) => running,
+        // Input ended before the client sent anything that starts a lifecycle.
+        // A host shutting down an unused server does this; it is not a failure.
+        Err(ServerInitializeError::ConnectionClosed(context)) => {
+            info!("input closed before the client started a session ({context}); exiting");
+            return Ok(());
+        }
+        Err(e) => return Err(e).context("failed to start MCP server"),
+    };
     running.waiting().await.context("server terminated")?;
     Ok(())
 }

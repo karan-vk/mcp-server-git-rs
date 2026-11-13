@@ -7,7 +7,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Changed
-- Bumped `rmcp` from 1.5 to 3.5.1. `tools/list` now builds its result via
+- Bumped `rmcp` from 1.5 to 3.10.0. `tools/list` now builds its result via
   `ListToolsResult::with_all_items`; wire output is unchanged (same 52 tools,
   no pagination cursor).
 - Bumped `git2` from 0.20 to 0.21 (vendored libgit2 1.9.7). The `ssh` and
@@ -16,6 +16,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and messages are handled exactly as before.
 
 ### Fixed
+- The server now exits with status 0 when input closes before the client
+  sends anything that starts a session (rmcp's `ConnectionClosed` during
+  the initialize handshake). A host shutting down an unused server is not a
+  failure; any other startup error still exits non-zero.
 - SSH remote operations (`git_push`, `git_fetch`, `git_ls_remote`,
   `git_tag_push`) no longer hang when no ssh-agent is running. libgit2
   re-invokes the credentials callback after every rejection, and
