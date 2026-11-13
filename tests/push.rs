@@ -8,7 +8,7 @@ use tempfile::TempDir;
 fn setup_bare_remote(f: &Fixture) -> (TempDir, String) {
     let bare_dir = TempDir::new().unwrap();
     Repository::init_bare(bare_dir.path()).unwrap();
-    let url = format!("file://{}", bare_dir.path().display());
+    let url = common::file_url(bare_dir.path());
     f.repo.remote("origin", &url).unwrap();
     (bare_dir, url)
 }

@@ -65,3 +65,16 @@ impl Fixture {
             .unwrap()
     }
 }
+
+/// A `file://` URL for a local path that libgit2 accepts on every platform.
+///
+/// On Windows a raw `file://C:\dir` does not parse; the form libgit2 needs is
+/// `file:///C:/dir`, with forward slashes and a leading slash before the drive.
+pub fn file_url(path: &Path) -> String {
+    let p = path.display().to_string().replace('\\', "/");
+    if p.starts_with('/') {
+        format!("file://{p}")
+    } else {
+        format!("file:///{p}")
+    }
+}
