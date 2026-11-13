@@ -26,7 +26,7 @@ pub fn git_push(repo: &Repository, args: PushArgs<'_>) -> Result<String> {
         None => {
             let head = repo.head().context("failed to resolve HEAD")?;
             head.shorthand()
-                .ok_or_else(|| anyhow!("detached HEAD: pass branch explicitly"))?
+                .map_err(|_| anyhow!("detached HEAD: pass branch explicitly"))?
                 .to_owned()
         }
     };
@@ -45,7 +45,7 @@ pub fn git_push(repo: &Repository, args: PushArgs<'_>) -> Result<String> {
     {
         let failures = Rc::clone(&failures);
         let mut cbs = RemoteCallbacks::new();
-        cbs.credentials(auth_callback);
+        cbs.credentials(auth_callback());
         cbs.push_update_reference(move |refname, status| {
             if let Some(msg) = status {
                 failures
@@ -87,36 +87,61 @@ pub fn git_push(repo: &Repository, args: PushArgs<'_>) -> Result<String> {
     Ok(format!("Pushed {branch} → {}{upstream_note}", args.remote))
 }
 
-pub fn auth_callback(
-    url: &str,
-    username: Option<&str>,
-    allowed: CredentialType,
-) -> Result<Cred, git2::Error> {
-    if allowed.contains(CredentialType::SSH_KEY) {
-        if let Ok(cred) = Cred::ssh_key_from_agent(username.unwrap_or("git")) {
-            return Ok(cred);
-        }
-    }
-    if allowed.contains(CredentialType::USER_PASS_PLAINTEXT) {
-        if let Ok(cfg) = Config::open_default() {
-            if let Ok(cred) = Cred::credential_helper(&cfg, url, username) {
+/// Build a credentials callback for one remote operation.
+///
+/// libgit2 re-invokes the callback every time the server rejects what it
+/// returned, so a source that always "succeeds" loops forever. The classic
+/// case is `Cred::ssh_key_from_agent`, which returns `Ok` even when no agent
+/// is running. The returned closure therefore tries each source at most once
+/// per operation and errors once they are exhausted.
+///
+/// Chain: ssh-agent → libgit2 credential helper → `git credential fill` →
+/// `$MCP_GIT_TOKEN` for HTTPS.
+pub fn auth_callback() -> impl FnMut(&str, Option<&str>, CredentialType) -> Result<Cred, git2::Error>
+{
+    let mut tried_ssh_agent = false;
+    let mut userpass_stage = 0u8;
+    let mut tried_default = false;
+
+    move |url, username, allowed| {
+        if allowed.contains(CredentialType::SSH_KEY) && !tried_ssh_agent {
+            tried_ssh_agent = true;
+            if let Ok(cred) = Cred::ssh_key_from_agent(username.unwrap_or("git")) {
                 return Ok(cred);
             }
         }
-        if let Some((user, pass)) = credential_fill(url) {
-            return Cred::userpass_plaintext(&user, &pass);
+        if allowed.contains(CredentialType::USER_PASS_PLAINTEXT) {
+            while userpass_stage < 3 {
+                userpass_stage += 1;
+                let cred = match userpass_stage {
+                    1 => Config::open_default()
+                        .and_then(|cfg| Cred::credential_helper(&cfg, url, username))
+                        .ok(),
+                    2 => credential_fill(url)
+                        .and_then(|(user, pass)| Cred::userpass_plaintext(&user, &pass).ok()),
+                    _ => std::env::var("MCP_GIT_TOKEN")
+                        .ok()
+                        .and_then(|token| Cred::userpass_plaintext("x-access-token", &token).ok()),
+                };
+                if let Some(cred) = cred {
+                    return Ok(cred);
+                }
+            }
+            return Err(git2::Error::from_str(
+                "HTTPS auth failed — configure a git credential helper or set MCP_GIT_TOKEN",
+            ));
         }
-        if let Ok(token) = std::env::var("MCP_GIT_TOKEN") {
-            return Cred::userpass_plaintext("x-access-token", &token);
+        if allowed.contains(CredentialType::DEFAULT) && !tried_default {
+            tried_default = true;
+            return Cred::default();
         }
-        return Err(git2::Error::from_str(
-            "HTTPS auth failed — configure a git credential helper or set MCP_GIT_TOKEN",
-        ));
+        if allowed.contains(CredentialType::SSH_KEY) {
+            return Err(git2::Error::from_str(
+                "SSH auth failed: no key from ssh-agent was accepted; start an agent and add your key (ssh-add)",
+            ));
+        }
+        Err(git2::Error::from_str("no usable auth method"))
     }
-    if allowed.contains(CredentialType::DEFAULT) {
-        return Cred::default();
-    }
-    Err(git2::Error::from_str("no usable auth method"))
 }
 
 /// Fallback that shells out to `git credential fill`, so we pick up any
@@ -166,6 +191,38 @@ fn parse_credential_output(stdout: &[u8]) -> Option<(String, String)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn auth_callback_tries_ssh_agent_once() {
+        // `ssh_key_from_agent` returns Ok with no agent running, and libgit2
+        // calls back after each rejection; a second attempt must error rather
+        // than hand back the same credential forever.
+        let mut cb = auth_callback();
+        let first = cb(
+            "ssh://git@example.com/r.git",
+            Some("git"),
+            CredentialType::SSH_KEY,
+        );
+        assert!(first.is_ok());
+        let err = cb(
+            "ssh://git@example.com/r.git",
+            Some("git"),
+            CredentialType::SSH_KEY,
+        )
+        .err()
+        .expect("second SSH attempt must fail");
+        assert!(err.message().contains("SSH auth failed"), "got: {err}");
+    }
+
+    #[test]
+    fn auth_callback_state_is_per_operation() {
+        let ssh = CredentialType::SSH_KEY;
+        let mut a = auth_callback();
+        assert!(a("ssh://h/r", Some("git"), ssh).is_ok());
+        assert!(a("ssh://h/r", Some("git"), ssh).is_err());
+        let mut b = auth_callback();
+        assert!(b("ssh://h/r", Some("git"), ssh).is_ok());
+    }
 
     #[test]
     fn parse_credential_output_happy_path() {

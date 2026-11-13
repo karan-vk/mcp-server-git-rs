@@ -78,7 +78,12 @@ pub fn git_stash_show(repo: &Repository, index: usize) -> Result<String> {
     writeln!(
         out,
         "Message: {}",
-        stash_commit.summary().unwrap_or("").trim_end()
+        stash_commit
+            .summary()
+            .ok()
+            .flatten()
+            .unwrap_or("")
+            .trim_end()
     )
     .unwrap();
     out.push('\n');

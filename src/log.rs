@@ -58,7 +58,7 @@ pub fn git_log(
         writeln!(
             entry,
             "Message: {}",
-            commit.summary().unwrap_or("").trim_end()
+            commit.summary().ok().flatten().unwrap_or("").trim_end()
         )
         .unwrap();
         entries.push(entry);

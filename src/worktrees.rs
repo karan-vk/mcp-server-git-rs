@@ -9,7 +9,7 @@ use crate::guard::reject_flag_arg;
 pub fn git_worktree_list(repo: &Repository) -> Result<String> {
     let names = repo.worktrees().context("failed to list worktrees")?;
     let mut out = String::new();
-    for n in names.iter().flatten() {
+    for n in names.iter().filter_map(|n| n.ok().flatten()) {
         let wt = match repo.find_worktree(n) {
             Ok(w) => w,
             Err(_) => continue,

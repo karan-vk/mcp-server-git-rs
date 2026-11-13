@@ -64,8 +64,8 @@ pub fn git_clean(repo: &Repository, force: bool) -> Result<String> {
             continue;
         }
         let path = match entry.path() {
-            Some(p) => p,
-            None => continue,
+            Ok(p) => p,
+            Err(_) => continue,
         };
         let abs = workdir.join(path);
         if abs.is_file() {

@@ -1,6 +1,6 @@
 use std::fmt::Write;
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use git2::{Direction, FetchOptions, RemoteCallbacks, Repository};
 
 use crate::guard::reject_flag_arg;
@@ -9,7 +9,7 @@ use crate::push::auth_callback;
 pub fn git_remote_list(repo: &Repository) -> Result<String> {
     let names = repo.remotes().context("failed to list remotes")?;
     let mut out = Vec::new();
-    for n in names.iter().flatten() {
+    for n in names.iter().filter_map(|n| n.ok().flatten()) {
         let r = repo
             .find_remote(n)
             .with_context(|| format!("failed to load remote {n:?}"))?;
@@ -53,7 +53,7 @@ pub fn git_fetch(repo: &Repository, name: &str, refspecs: &[String]) -> Result<S
         .with_context(|| format!("remote {name:?} not found"))?;
 
     let mut cbs = RemoteCallbacks::new();
-    cbs.credentials(auth_callback);
+    cbs.credentials(auth_callback());
     let mut opts = FetchOptions::new();
     opts.remote_callbacks(cbs);
 
@@ -61,11 +61,11 @@ pub fn git_fetch(repo: &Repository, name: &str, refspecs: &[String]) -> Result<S
     if specs.is_empty() {
         remote
             .fetch::<&str>(&[], Some(&mut opts), None)
-            .with_context(|| format!("fetch from {name} failed"))?;
+            .map_err(|e| anyhow!("fetch from {name} failed: {e}"))?;
     } else {
         remote
             .fetch(&specs, Some(&mut opts), None)
-            .with_context(|| format!("fetch from {name} failed"))?;
+            .map_err(|e| anyhow!("fetch from {name} failed: {e}"))?;
     }
 
     let stats = remote.stats();
@@ -83,10 +83,10 @@ pub fn git_remote_prune(repo: &Repository, name: &str) -> Result<String> {
         .find_remote(name)
         .with_context(|| format!("remote {name:?} not found"))?;
     let mut cbs = RemoteCallbacks::new();
-    cbs.credentials(auth_callback);
+    cbs.credentials(auth_callback());
     remote
         .prune(Some(cbs))
-        .with_context(|| format!("prune {name} failed"))?;
+        .map_err(|e| anyhow!("prune {name} failed: {e}"))?;
     Ok(format!("Pruned stale tracking refs for '{name}'"))
 }
 
@@ -97,15 +97,15 @@ pub fn git_ls_remote(repo: &Repository, name: &str) -> Result<String> {
         .with_context(|| format!("remote {name:?} not found"))?;
 
     let mut cbs = RemoteCallbacks::new();
-    cbs.credentials(auth_callback);
+    cbs.credentials(auth_callback());
     let conn = remote
         .connect_auth(Direction::Fetch, Some(cbs), None)
-        .with_context(|| format!("connect to {name} failed"))?;
+        .map_err(|e| anyhow!("connect to {name} failed: {e}"))?;
 
     let mut out = String::new();
     for head in conn
         .list()
-        .with_context(|| format!("list refs on {name} failed"))?
+        .map_err(|e| anyhow!("list refs on {name} failed: {e}"))?
     {
         writeln!(out, "{}\t{}", head.oid(), head.name()).unwrap();
     }

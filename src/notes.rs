@@ -106,8 +106,8 @@ pub fn git_grep(repo: &Repository, pattern: &str, ignore_case: bool) -> Result<S
             continue;
         }
         let path = match entry.path() {
-            Some(p) => p,
-            None => continue,
+            Ok(p) => p,
+            Err(_) => continue,
         };
         let abs = workdir.join(path);
         let meta = match fs::metadata(&abs) {

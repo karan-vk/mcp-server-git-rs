@@ -93,7 +93,10 @@ fn blame_range(
             Some(hunk) => {
                 let oid = hunk.final_commit_id();
                 let sig = hunk.final_signature();
-                let name = sig.name().unwrap_or("Unknown");
+                let name = sig
+                    .as_ref()
+                    .and_then(|s| s.name().ok())
+                    .unwrap_or("Unknown");
                 let short = format!("{}", oid);
                 let short = &short[..short.len().min(8)];
                 writeln!(out, "{short} ({name} L{lineno}) {line}").unwrap();
@@ -230,7 +233,7 @@ pub fn git_cat_file(repo: &Repository, spec: &str) -> Result<String> {
                 .unwrap();
             }
             out.push('\n');
-            out.push_str(raw.message().unwrap_or(""));
+            out.push_str(raw.message().ok().flatten().unwrap_or(""));
         }
         _ => {
             writeln!(out, "(unknown object kind)").unwrap();
@@ -245,17 +248,17 @@ pub fn git_show_ref(repo: &Repository) -> Result<String> {
     for r in refs {
         let r = r?;
         let name = match r.name() {
-            Some(n) => n.to_owned(),
-            None => continue,
+            Ok(n) => n.to_owned(),
+            Err(_) => continue,
         };
         let oid = match r.target() {
             Some(o) => o,
             None => match r.symbolic_target() {
-                Some(t) => {
+                Ok(Some(t)) => {
                     lines.push(format!("symbolic {t}\t{name}"));
                     continue;
                 }
-                None => continue,
+                _ => continue,
             },
         };
         lines.push(format!("{oid} {name}"));

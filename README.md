@@ -49,7 +49,7 @@ shapes one-to-one.
 | `git_diff_staged` | Staged changes | read-only |
 | `git_diff` | Diff working tree against a branch/tag/commit | read-only |
 | `git_commit` | Record staged changes | — |
-| `git_add` | Stage files; `["."]` stages everything | — |
+| `git_add` | Stage files, directories or globs (deleted paths stage their removal); `["."]` stages everything | — |
 | `git_reset` | Unstage all | destructive |
 | `git_log` | Commit log with optional date filtering | read-only |
 | `git_create_branch` | Create a branch | — |

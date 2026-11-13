@@ -11,7 +11,7 @@ use tempfile::TempDir;
 fn bare_remote() -> (TempDir, String) {
     let dir = TempDir::new().unwrap();
     Repository::init_bare(dir.path()).unwrap();
-    let url = format!("file://{}", dir.path().display());
+    let url = common::file_url(dir.path());
     (dir, url)
 }
 

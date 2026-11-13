@@ -6,6 +6,8 @@ use mcp_server_git_rs::tools::{
     git_add, git_branch, git_checkout, git_commit, git_create_branch, git_diff, git_diff_staged,
     git_diff_unstaged, git_reset, git_show, git_status,
 };
+use std::fs;
+use std::path::Path;
 
 #[test]
 fn status_clean_repo() {
@@ -135,6 +137,138 @@ fn add_rejects_flag_file() {
     assert!(err.to_string().contains("must not start with '-'"));
 }
 
+fn in_index(f: &Fixture, rel: &str) -> bool {
+    f.repo
+        .index()
+        .unwrap()
+        .get_path(Path::new(rel), 0)
+        .is_some()
+}
+
+fn strings(v: &[&str]) -> Vec<String> {
+    v.iter().map(|s| s.to_string()).collect()
+}
+
+#[test]
+fn add_directory_rename_in_one_call() {
+    let mut f = Fixture::new();
+    f.write_commit("olddir/a.txt", "a\n", "add a");
+    f.write_commit("olddir/sub/b.txt", "b\n", "add b");
+    fs::rename(f.path().join("olddir"), f.path().join("newdir")).unwrap();
+
+    let out = git_add(&f.repo, &strings(&["olddir", "newdir"])).unwrap();
+    assert_eq!(out, "Files staged successfully");
+    assert!(in_index(&f, "newdir/a.txt"));
+    assert!(in_index(&f, "newdir/sub/b.txt"));
+    assert!(!in_index(&f, "olddir/a.txt"));
+    assert!(!in_index(&f, "olddir/sub/b.txt"));
+}
+
+#[test]
+fn add_directory_recurses() {
+    let f = Fixture::new();
+    f.write("dir/a.txt", "a\n");
+    f.write("dir/nested/b.txt", "b\n");
+    git_add(&f.repo, &strings(&["dir"])).unwrap();
+    assert!(in_index(&f, "dir/a.txt"));
+    assert!(in_index(&f, "dir/nested/b.txt"));
+}
+
+#[test]
+fn add_deleted_file_stages_removal() {
+    let f = Fixture::new();
+    fs::remove_file(f.path().join("initial.txt")).unwrap();
+    let out = git_add(&f.repo, &strings(&["initial.txt"])).unwrap();
+    assert_eq!(out, "Files staged successfully");
+    assert!(!in_index(&f, "initial.txt"));
+}
+
+#[test]
+fn add_glob_pathspec() {
+    let f = Fixture::new();
+    f.write("a.rs", "a\n");
+    f.write("b.rs", "b\n");
+    f.write("c.md", "c\n");
+    git_add(&f.repo, &strings(&["*.rs"])).unwrap();
+    assert!(in_index(&f, "a.rs"));
+    assert!(in_index(&f, "b.rs"));
+    assert!(!in_index(&f, "c.md"));
+}
+
+#[test]
+fn add_normalises_path_forms() {
+    let f = Fixture::new();
+    f.write("dir/a.txt", "a\n");
+    f.write("dir2/b.txt", "b\n");
+    f.write("c.txt", "c\n");
+    let abs = f.path().join("c.txt").to_str().unwrap().to_owned();
+    git_add(
+        &f.repo,
+        &["./dir/a.txt".to_string(), "dir2/".to_string(), abs],
+    )
+    .unwrap();
+    assert!(in_index(&f, "dir/a.txt"));
+    assert!(in_index(&f, "dir2/b.txt"));
+    assert!(in_index(&f, "c.txt"));
+}
+
+#[test]
+fn add_rejects_path_outside_repo() {
+    let f = Fixture::new();
+    for bad in ["../outside.txt", "dir/../../outside.txt", "/etc/passwd"] {
+        let err = git_add(&f.repo, &strings(&[bad])).unwrap_err();
+        assert!(
+            err.to_string().contains("is outside the repository"),
+            "{bad}: {err}"
+        );
+    }
+}
+
+#[test]
+fn add_unmatched_pathspec_errors_and_stages_nothing() {
+    let f = Fixture::new();
+    f.write("ok.txt", "ok\n");
+    let err = git_add(&f.repo, &strings(&["ok.txt", "nomatch.txt"])).unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "pathspec 'nomatch.txt' did not match any files"
+    );
+    assert!(!in_index(&f, "ok.txt"));
+}
+
+#[test]
+fn add_ignored_path_errors() {
+    let f = Fixture::new();
+    f.write(".gitignore", "*.log\n");
+    f.write("debug.log", "x\n");
+    let err = git_add(&f.repo, &strings(&["debug.log"])).unwrap_err();
+    assert!(
+        err.to_string()
+            .contains("ignored by one of your .gitignore files"),
+        "got: {err}"
+    );
+    assert!(!in_index(&f, "debug.log"));
+}
+
+#[test]
+fn add_empty_list_errors() {
+    let f = Fixture::new();
+    let err = git_add(&f.repo, &[]).unwrap_err();
+    assert!(
+        err.to_string().starts_with("No files provided to stage"),
+        "got: {err}"
+    );
+}
+
+#[test]
+fn add_nothing_to_stage_reports_no_changes() {
+    let f = Fixture::new();
+    for files in [&["."][..], &["initial.txt"][..]] {
+        let out = git_add(&f.repo, &strings(files)).unwrap();
+        assert!(out.starts_with("No changes were staged"), "got: {out}");
+    }
+}
+
 #[test]
 fn reset_unstages() {
     let f = Fixture::new();
@@ -201,7 +335,7 @@ fn checkout_switches_branch() {
     git_create_branch(&f.repo, "feature", None).unwrap();
     let out = git_checkout(&f.repo, "feature").unwrap();
     assert!(out.contains("feature"), "got: {out}");
-    assert_eq!(f.repo.head().unwrap().shorthand(), Some("feature"));
+    assert_eq!(f.repo.head().unwrap().shorthand().unwrap(), "feature");
 }
 
 #[test]

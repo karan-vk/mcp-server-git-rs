@@ -6,6 +6,45 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- Bumped `rmcp` from 1.5 to 3.10.0. `tools/list` now builds its result via
+  `ListToolsResult::with_all_items`; wire output is unchanged (same 52 tools,
+  no pagination cursor).
+- Bumped `git2` from 0.20 to 0.21 (vendored libgit2 1.9.7). The `ssh` and
+  `https` features, no longer on by default in git2, are enabled explicitly
+  so push, fetch and ls-remote keep both transports. Non-UTF-8 names, paths
+  and messages are handled exactly as before.
+
+### Fixed
+- The server now exits with status 0 when input closes before the client
+  sends anything that starts a session (rmcp's `ConnectionClosed` during
+  the initialize handshake). A host shutting down an unused server is not a
+  failure; any other startup error still exits non-zero.
+- SSH remote operations (`git_push`, `git_fetch`, `git_ls_remote`,
+  `git_tag_push`) no longer hang when no ssh-agent is running. libgit2
+  re-invokes the credentials callback after every rejection, and
+  `ssh_key_from_agent` succeeds even without an agent, so the old callback
+  looped forever. Each auth source is now tried at most once per operation;
+  a rejected HTTPS credential moves on to the next source in the chain
+  instead of being retried.
+- `git_fetch`, `git_ls_remote` and `git_remote_prune` errors now include the
+  underlying cause (e.g. `connect to origin failed: SSH auth failed: ...`),
+  matching `git_push`.
+- `initialize` now reports `serverInfo` as `mcp-server-git-rs` with this
+  crate's version, instead of rmcp's own crate name and version.
+- `git_add` now follows `git add -- <pathspec>` semantics, matching the
+  Python reference: directories recurse, globs expand, and tracked paths
+  missing from the working tree stage their removal, so a directory rename
+  stages in one call (`["olddir", "newdir"]`). `./path`, `dir/` and absolute
+  paths inside the repository are accepted. Previously only existing regular
+  files (or `["."]`) could be staged.
+- `git_add` parity with the Python reference: an empty `files` list is
+  rejected (schema `minItems: 1`), paths resolving outside the repository
+  report `Path '...' is outside the repository '...'`, a call that changes
+  nothing returns `No changes were staged...`, and unmatched or ignored paths
+  error with git's wording. All paths are validated first, so one bad entry
+  stages nothing.
+
 ## [0.2.1] – 2026-04-25
 
 ### Fixed
